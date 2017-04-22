@@ -11,10 +11,13 @@
 //  Initialize the resources.
 let FONT: Font;
 let SPRITES:ImageSpriteSheet;
+let SCENES:ImageSpriteSheet;
 addInitHook(() => {
     FONT = new Font(IMAGES['font'], 'white');
     SPRITES = new ImageSpriteSheet(
 	IMAGES['sprites'], new Vec2(16,16), new Vec2(8,8));
+    SCENES = new ImageSpriteSheet(
+	IMAGES['scenes'], new Vec2(200,120), new Vec2(100,0));
 });
 
 
@@ -28,8 +31,10 @@ function mkGalaxy(
     for (let dy = -r; dy < r; dy++) {
 	let v = Math.random()-0.5;
 	for (let dx = -r; dx < r; dx++) {
-	    let d = Math.sqrt(dx*dx+dy*dy)/r+.1;
-	    let a = Math.atan2(dy, dx)/Math.PI + 1.2; // 0..2
+	    let x = dx*0.6+dy*0.4;
+	    let y = dy*0.8+dx*0.2;
+	    let d = Math.sqrt(x*x+y*y)/r*1.4+.1;
+	    let a = Math.atan2(y, x)/Math.PI + 1.2; // 0..2
 	    let prob = fmod(a, d)/d*(1.2-d);
 	    if (Math.random() < prob) {
 		data[i++] = color.r*255;
@@ -89,6 +94,7 @@ class ZoomStarsImageSource implements ImageSource {
     bounds: Rect;
     maxdepth: number;
     imgsrc: ImageSource;
+    adding = true;
     
     private _stars: Star2[] = [];
 
@@ -130,22 +136,23 @@ class ZoomStarsImageSource implements ImageSource {
     update() {
 	for (let star of this._stars) {
 	    star.z += 0.5;
-	    let s = star.s/star.z;
-	    if (s < 1) {
-		star.p = new Vec2(
-		    (Math.random()-0.5)*this.bounds.width*8,
-		    (Math.random()-0.5)*this.bounds.height*8);
-		star.z = 1;
+	    if (this.adding) {
+		let s = star.s/star.z;
+		if (s < 1) {
+		    star.p = new Vec2(
+			(Math.random()-0.5)*this.bounds.width*8,
+			(Math.random()-0.5)*this.bounds.height*8);
+		    star.z = 1;
+		}
 	    }
 	}
     }
 }
 
 
-
-//  Game
+//  Ending
 // 
-class Game extends Scene {
+class Ending extends Scene {
 
     earth: CanvasImageSource;
     galaxy: CanvasImageSource;
@@ -199,6 +206,13 @@ class Game extends Scene {
 		this.stage = 3;
 	    }
 	    break;
+	case 3:
+	    if (6 < dt) {
+		this.stars.adding = false;
+		this.stage = 4;
+		APP.setMusic(SOUNDS['ending']);
+	    }
+	    break;
 	}
     }
 
@@ -212,7 +226,7 @@ class Game extends Scene {
 	}
 	ctx.save();
 	ctx.translate(this.screen.width/2, this.screen.height/2);
-	if (dt < 2.5) {
+	if (dt < 3.5) {
 	    let s = 16/(dt*12+0.1);
 	    ctx.save();
 	    ctx.scale(s, s);
@@ -222,7 +236,7 @@ class Game extends Scene {
 	    ctx.fillStyle = 'blue';
 	    ctx.fillRect(-2,-2,4,4);
 	}
-	if (2.0 < dt && dt < 6) {
+	if (2.0 < dt && dt < 7) {
 	    let s = 16/((dt*dt-4.0)*4+0.1);
 	    ctx.save();
 	    ctx.scale(s, s);
@@ -230,8 +244,134 @@ class Game extends Scene {
 	    ctx.restore();
 	}
 	ctx.restore();
-	if (this.stage == 3) {
+	if (3 <= this.stage) {
 	    this.textBox.render(ctx);
 	}
+    }
+}
+
+
+//  PictureScene
+// 
+class PictureScene extends GameScene {
+
+    dialogBox: DialogBox;
+    image0: ImageSource = null;
+    image1: ImageSource = null;
+    alpha: number = 0;
+
+    constructor() {
+	super();
+	let lineHeight = 8;
+	let lineSpace = 8;
+	let padding = 10;
+	let width = this.screen.width-16;
+	let height = (lineHeight+lineSpace)*6-lineSpace+padding*2;
+	let rect = this.screen.resize(width, height, 0, -1).move(0,-8);
+	let textbox = new TextBox(rect, FONT);
+	textbox.padding = padding;
+	textbox.lineSpace = lineSpace;
+	textbox.background = 'rgba(0,0,0,0.5)'
+	this.dialogBox = new DialogBox(textbox);
+    }
+
+    init() {
+	super.init();
+	this.add(this.dialogBox);
+    }
+
+    update() {
+	super.update();
+	if (this.alpha < 1.0) {
+	    this.alpha = upperbound(1.0, this.alpha+0.05);
+	}
+    }
+
+    onKeyDown(key: number) {
+	super.onKeyDown(key);
+	this.dialogBox.onKeyDown(key);
+    }    
+
+    onMouseDown(p: Vec2, button: number) {
+	super.onMouseDown(p, button);
+	this.dialogBox.onMouseDown(p, button);
+    }    
+
+    onMouseUp(p: Vec2, button: number) {
+	super.onMouseUp(p, button);
+	this.dialogBox.onMouseUp(p, button);
+    }    
+
+    onMouseMove(p: Vec2) {
+	super.onMouseMove(p);
+	this.dialogBox.onMouseMove(p);
+    }    
+
+    render(ctx: CanvasRenderingContext2D, bx: number, by: number) {
+	ctx.fillStyle = 'rgb(0,0,0)';
+	ctx.fillRect(bx, by, this.screen.width, this.screen.height);
+	ctx.save();
+	ctx.translate(bx, by);
+	ctx.translate(this.screen.width/2, 0);
+	if (this.image0 !== null) {
+	    ctx.globalAlpha = 1.0-this.alpha;
+	    this.image0.render(ctx);
+	}
+	if (this.image1 !== null) {
+	    ctx.globalAlpha = this.alpha;
+	    this.image1.render(ctx);
+	}
+	ctx.restore();
+	super.render(ctx, bx, by);
+	// draw a textbox border.
+	let rect = this.dialogBox.textbox.frame.inflate(-2,-2);
+	ctx.strokeStyle = 'white';
+	ctx.lineWidth = 2;
+	ctx.strokeRect(bx+rect.x, by+rect.y, rect.width, rect.height);
+    }
+    
+    changeScene(scene: Scene) {
+	if (scene instanceof PictureScene) {
+	    scene.image0 = this.image1;
+	}
+	super.changeScene(scene);
+    }
+}
+
+
+//  Scene1
+// 
+class Game extends PictureScene {
+    constructor() {
+	super();
+	this.image1 = SCENES.get(0);
+    }
+    init() {
+	super.init();
+	this.dialogBox.addDisplay(
+	    'I am a real estate tycoon guy.\n', 10);
+	this.dialogBox.addDisplay(
+	    'I build things around.\n', 10);
+	let wait = this.dialogBox.addWait();
+	wait.ended.subscribe(() => {
+	    this.changeScene(new Scene2());
+	});
+    }
+}
+
+
+//  Scene2
+// 
+class Scene2 extends PictureScene {
+    constructor() {
+	super();
+	this.image1 = SCENES.get(1);
+    }
+    init() {
+	super.init();
+	this.dialogBox.addDisplay(
+	    'From this vantage point, everything looks like a dot.\n', 10);
+	this.dialogBox.addDisplay(
+	    'The world looks very small.\n', 10);
     }
 }

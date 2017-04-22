@@ -525,9 +525,6 @@ class MenuTask extends TextTask {
 	this.updateSelection();
     }
 
-    ff() {
-    }
-
     onKeyDown(key: number) {
 	let d = 0;
 	let keysym = getKeySym(key);
@@ -617,6 +614,35 @@ class MenuTask extends TextTask {
 }
 
 
+class WaitTask extends TextTask {
+
+    ended: Signal;
+    
+    constructor(dialog: DialogBox) {
+	super(dialog);
+	this.ended = new Signal(this);
+    }
+
+    onKeyDown(key: number) {
+	let keysym = getKeySym(key);
+	switch (keysym) {
+	case KeySym.Action:
+	case KeySym.Cancel:
+	    this.stop();
+	    this.ended.fire();
+	    return;
+	}
+    }
+
+    onMouseUp(p: Vec2, button: number) {
+	if (button == 0) {
+	    this.stop();
+	    this.ended.fire();
+	}
+    }
+}
+
+
 //  DialogBox
 //
 class DialogBox extends Widget {
@@ -643,13 +669,13 @@ class DialogBox extends Widget {
 
     init() {
 	super.init();
-	if (this.textbox !== null) {
+	if (this.layer !== null) {
 	    this.layer.addSprite(this.sprite);
 	}
     }
 
     stop() {
-	if (this.textbox !== null) {
+	if (this.layer !== null) {
 	    this.layer.removeSprite(this.sprite);
 	}
 	super.stop();
@@ -764,4 +790,9 @@ class DialogBox extends Widget {
 	return task;
     }
 
+    addWait() {
+	let task = new WaitTask(this);
+	this.addTask(task);
+	return task;
+    }
 }

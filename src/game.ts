@@ -8,6 +8,16 @@
 ///  game.ts
 ///
 
+//  Initialize the resources.
+let FONT: Font;
+let SPRITES:ImageSpriteSheet;
+addInitHook(() => {
+    FONT = new Font(IMAGES['font'], 'white');
+    SPRITES = new ImageSpriteSheet(
+	IMAGES['sprites'], new Vec2(16,16), new Vec2(8,8));
+});
+
+
 function mkGalaxy(
     r: number, color: Color) {
     let canvas = createCanvas(r*2, r*2);
@@ -22,10 +32,10 @@ function mkGalaxy(
 	    let a = Math.atan2(dy, dx)/Math.PI + 1.2; // 0..2
 	    let prob = fmod(a, d)/d*(1.2-d);
 	    if (Math.random() < prob) {
-		data[i++] = color.r;
-		data[i++] = color.g;
-		data[i++] = color.b;
-		data[i++] = 255;
+		data[i++] = color.r*255;
+		data[i++] = color.g*255;
+		data[i++] = color.b*255;
+		data[i++] = color.a*255;
 	    } else {
 		i += 4;
 	    }
@@ -55,10 +65,10 @@ function mkEarth(
 		v = clamp(-2, v, +1);
 		a[x] = v;
 		let color = (v < 0)? color1 : ((v < 0.1)? color2 : color3);
-		data[i++] = color.r;
-		data[i++] = color.g;
-		data[i++] = color.b;
-		data[i++] = 255;
+		data[i++] = color.r*255;
+		data[i++] = color.g*255;
+		data[i++] = color.b*255;
+		data[i++] = color.a*255;
 	    } else {
 		i += 4;
 	    }
@@ -68,93 +78,160 @@ function mkEarth(
     return canvas;
 }
 
+class Star2 {
+    p: Vec2;
+    z: number;
+    s: number;
+}
 
-//  Initialize the resources.
-let FONT: Font;
-let SPRITES:ImageSpriteSheet;
-addInitHook(() => {
-    FONT = new Font(IMAGES['font'], 'white');
-    SPRITES = new ImageSpriteSheet(
-	IMAGES['sprites'], new Vec2(16,16), new Vec2(8,8));
-});
+class ZoomStarsImageSource implements ImageSource {
+    
+    bounds: Rect;
+    maxdepth: number;
+    imgsrc: ImageSource;
+    
+    private _stars: Star2[] = [];
 
-
-//  Player
-//
-class Player extends Entity {
-
-    scene: Game;
-    usermove: Vec2;
-
-    constructor(scene: Game, pos: Vec2) {
-	super(pos);
-	this.scene = scene;
-	this.sprite.imgsrc = SPRITES.get(0);
-	this.collider = this.sprite.getBounds(new Vec2());
-	this.usermove = new Vec2();
+    constructor(bounds: Rect, nstars: number, maxdepth=100) {
+	this.bounds = bounds
+	this.maxdepth = maxdepth;
+	this.imgsrc = new RectImageSource('white', new Rect(0,0,1,1));
+	for (let i = 0; i < nstars; i++) {
+	    let star = new Star2();
+	    star.p = new Vec2(
+		(Math.random()-0.5)*this.bounds.width*8,
+		(Math.random()-0.5)*this.bounds.height*8);
+	    star.z = 1+rnd(30);
+	    star.s = (Math.random()*20+10);
+	    this._stars.push(star);
+	}
     }
 
-    update() {
-	super.update();
-	this.moveIfPossible(this.usermove);
+    getBounds(): Rect {
+	return this.bounds;
+    }
+
+    render(ctx: CanvasRenderingContext2D) {
+	ctx.save();
+	ctx.translate(int(this.bounds.x), int(this.bounds.y));
+	let c = this.bounds.center();
+	for (let star of this._stars) {
+	    ctx.save();
+	    let z = star.z;
+	    ctx.translate(c.x+star.p.x/z, c.y+star.p.y/z);
+	    let s = star.s/z;
+	    ctx.scale(s, s);
+	    this.imgsrc.render(ctx);
+	    ctx.restore();
+	}
+	ctx.restore();
     }
     
-    setMove(v: Vec2) {
-	this.usermove = v.scale(4);
+    update() {
+	for (let star of this._stars) {
+	    star.z += 0.5;
+	    let s = star.s/star.z;
+	    if (s < 1) {
+		star.p = new Vec2(
+		    (Math.random()-0.5)*this.bounds.width*8,
+		    (Math.random()-0.5)*this.bounds.height*8);
+		star.z = 1;
+	    }
+	}
     }
 }
 
 
+
 //  Game
 // 
-class Game extends GameScene {
+class Game extends Scene {
 
-    player: Player;
-    scoreBox: TextBox;
-    score: number;
-
-    earth: HTMLCanvasElement = null;
-    galaxy: HTMLCanvasElement = null;
+    earth: CanvasImageSource;
+    galaxy: CanvasImageSource;
+    stars: ZoomStarsImageSource;
+    textBox: TextBox;
+    startTime = 0;
+    stage = 0;
     
+    constructor() {
+	super();
+	let color1 = new Color(0,0,1);
+	let color2 = new Color(0,1,0);
+	let color3 = new Color(1,1,1);
+	this.earth = new CanvasImageSource(mkEarth(20, color1, color2, color3));
+	this.galaxy = new CanvasImageSource(mkGalaxy(60, color3));
+	this.stars = new ZoomStarsImageSource(this.screen, 100);
+	this.textBox = new TextBox(
+	    new Rect(0, this.screen.height/2, this.screen.width, this.screen.height/2),
+	    FONT);
+	this.textBox.lineSpace = 8;
+	this.textBox.putText([
+	    'PALE BLUE DOT',
+	    'LUDUM DARE 38 "A SMALL WORLD"',
+	    'THANKS FOR PLAYING'
+	], 'center', 'center');
+    }
+
     init() {
 	super.init();
-	this.scoreBox = new TextBox(this.screen.inflate(-8,-8), FONT);
-	this.player = new Player(this, this.screen.center());
-	this.add(this.player);
-	this.score = 0;
-	this.updateScore();
+	this.startTime = getTime();
+	this.stage = 0;
     }
 
     update() {
 	super.update();
-    }
-
-    onDirChanged(v: Vec2) {
-	this.player.setMove(v);
+	this.stars.update();
+	let dt = getTime() - this.startTime;
+	switch (this.stage) {
+	case 0:
+	    playSound(SOUNDS['zoom']);
+	    this.stage = 1;
+	    break;
+	case 1:
+	    if (2.5 < dt) {
+		this.stage = 2;
+		playSound(SOUNDS['zoom']);
+	    }
+	    break;
+	case 2:
+	    if (5 < dt) {
+		this.stage = 3;
+	    }
+	    break;
+	}
     }
 
     render(ctx: CanvasRenderingContext2D, bx: number, by: number) {
 	ctx.fillStyle = 'rgb(0,0,0)';
 	ctx.fillRect(bx, by, this.screen.width, this.screen.height);
-	
-	if (this.earth === null) {
-	    let color1 = new Color(0,0,255);
-	    let color2 = new Color(0,255,0);
-	    let color3 = new Color(255,255,255);
-	    this.earth = mkEarth(20, color1, color2, color3);
-	}
-	ctx.drawImage(this.earth, 50, 50);
-	if (this.galaxy === null) {
-	    this.galaxy = mkGalaxy(60, new Color(255,255,255));
-	}
-	ctx.drawImage(this.galaxy, 100, 100);
-	
-	//super.render(ctx, bx, by);
-	//this.scoreBox.render(ctx);
-    }
 
-    updateScore() {
-	this.scoreBox.clear();
-	this.scoreBox.putText(['SCORE: '+this.score]);
+	let dt = getTime() - this.startTime;
+	if (0.5 < dt) {
+	    this.stars.render(ctx);
+	}
+	ctx.save();
+	ctx.translate(this.screen.width/2, this.screen.height/2);
+	if (dt < 2.5) {
+	    let s = 16/(dt*12+0.1);
+	    ctx.save();
+	    ctx.scale(s, s);
+	    this.earth.render(ctx);
+	    ctx.restore();
+	} else {
+	    ctx.fillStyle = 'blue';
+	    ctx.fillRect(-2,-2,4,4);
+	}
+	if (2.0 < dt && dt < 6) {
+	    let s = 16/((dt*dt-4.0)*4+0.1);
+	    ctx.save();
+	    ctx.scale(s, s);
+	    this.galaxy.render(ctx);
+	    ctx.restore();
+	}
+	ctx.restore();
+	if (this.stage == 3) {
+	    this.textBox.render(ctx);
+	}
     }
 }

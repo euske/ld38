@@ -82,6 +82,46 @@ class OvalImageSource implements ImageSource {
 }
 
 
+/** ImageSource that uses a canvas object.
+ */
+class CanvasImageSource implements ImageSource {
+
+    /** Source image. */
+    canvas: HTMLCanvasElement;
+    /** Destination rectangle. */
+    dstRect: Rect;
+    /** Source rectangle. */
+    srcRect: Rect;
+    
+    constructor(canvas: HTMLCanvasElement, dstRect: Rect=null, srcRect: Rect=null) {
+	this.canvas = canvas;
+	if (dstRect === null) {
+	    dstRect = new Rect(-canvas.width/2, -canvas.height/2, canvas.width, canvas.height);
+	}
+	this.dstRect = dstRect;
+	if (srcRect === null) {
+	    srcRect = new Rect(0, 0, canvas.width, canvas.height);
+	}
+	this.srcRect = srcRect;
+    }
+
+    /** Returns the bounds of the image at (0, 0). */
+    getBounds(): Rect {
+	return this.dstRect;
+    }
+
+    /** Renders this image in the given context. */
+    render(ctx: CanvasRenderingContext2D) {
+	ctx.drawImage(
+	    this.canvas,
+	    this.srcRect.x, this.srcRect.y,
+	    this.srcRect.width, this.srcRect.height,
+	    this.dstRect.x, this.dstRect.y,
+	    this.dstRect.width, this.dstRect.height);
+    }
+}
+
+
 /** ImageSource that uses a (part of) HTML <img> element.
  */
 class HTMLImageSource implements ImageSource {

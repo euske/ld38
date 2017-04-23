@@ -49,6 +49,7 @@ const GW = 10;
 const GH = 10;
 const CITY_WIDTH = 10;
 const CITY_HEIGHT = 10;
+const MAX_SCORE = 100;
 
 const COLOR_ROAD = new Color(100,100,100);
 const COLOR_SIDEWALK = new Color(200,200,200);
@@ -232,7 +233,7 @@ class Ending extends Scene {
 	    FONT);
 	this.textBox.lineSpace = 8;
 	this.textBox.putText([
-	    'DOT',
+	    'ANOTHER DAY OF DOT',
 	    'LUDUM DARE 38 "A SMALL WORLD"',
 	    'THANKS FOR PLAYING'
 	], 'center', 'center');
@@ -336,6 +337,7 @@ class PictureScene extends GameScene {
     init() {
 	super.init();
 	this.add(this.dialogBox);
+	APP.setMusic(SOUNDS['intro'], MP3_GAP, 7.9);
     }
 
     update() {
@@ -414,7 +416,6 @@ class Intro1 extends PictureScene {
 	wait.ended.subscribe(() => {
 	    this.changeScene(new Intro2());
 	});
-	APP.setMusic(SOUNDS['intro'], MP3_GAP, 8.0);
     }
 }
 
@@ -444,11 +445,11 @@ class Intro3 extends PictureScene {
     init() {
 	super.init();
 	this.dialogBox.addDisplay(
-	    'I\'m a food vendor guy.\n');
+	    'I\'m a street food vendor guy.\n');
 	this.dialogBox.addDisplay(
 	    'Every morning, I find the best parking spot for my food truck.\n');
 	this.dialogBox.addDisplay(
-	    'The city space is limited. It\'s packed with competitors.\n');
+	    'Every day is a battle with competitors.\n');
 	let wait = this.dialogBox.addWait();
 	wait.ended.subscribe(() => {
 	    this.changeScene(new Game());
@@ -477,6 +478,7 @@ class Car extends Entity {
     type: number;
     movement: Vec2 = new Vec2();
     braked: boolean = false;
+    area: number = 0;
     
     lastdir: Vec2 = new Vec2();
 
@@ -506,12 +508,23 @@ class Car extends Entity {
 	    index += 3;
 	}
 	this.sprite.imgsrc = SPRITES.get(index, this.type);
+	this.area = this.scene.checkArea(this.getCollider() as Rect);
+	if (this.braked && rnd(10) == 0) {
+	    let score = sign(this.area) * rnd(1,10) + rnd(3);
+	    if (score != 0) {
+		this.scene.add(new MoneyParticle(this.pos, score));
+		this.addScore(score);
+	    }
+	}
     }
 
     run() {
 	this.moveIfPossible(this.movement.scale(4));
     }
     
+    addScore(score: number) {
+    }
+
     getObstaclesFor(range: Rect, v: Vec2, context=null as string): Rect[] {
 	return this.tilemap.getTileRects(this.tilemap.isObstacle, range);
     }
@@ -527,6 +540,7 @@ class Car extends Entity {
 class Enemy extends Car {
 
     timeout = 0;
+    brakage = 0;
     
     constructor(scene: Game, tilemap: TileMap, pos: Vec2, movement: Vec2) {
 	super(scene, tilemap, pos, 1);
@@ -538,9 +552,23 @@ class Enemy extends Car {
 	if (0 < this.timeout) {
 	    this.timeout--;
 	}
+	if (this.braked) {
+	    this.brakage -= Math.random()*0.05;
+	    if (this.brakage <= 0) {
+		this.braked = false;
+	    }
+	}
     }
     
+    addScore(score: number) {
+	if (this.area != 0 &&
+	    this.area == this.scene.player.area) {
+	    this.scene.takeMarket(score);
+	}
+    }
+
     run() {
+	if (this.braked) return;
 	let ts = this.tilemap.tilesize;
 	let v = this.movement;
 	let dx = this.pos.x % ts;
@@ -549,49 +577,57 @@ class Enemy extends Car {
 	    this.timeout == 0 && rnd(2)) {
 	    let x = Math.floor(this.pos.x/ts) % GW;
 	    let y = Math.floor(this.pos.y/ts) % GH;
+	    let v1: Vec2 = null;
 	    if (x == GW-2 && y == GH-2) {
 		if (v.x == 0 && v.y != 0) {
-		    v = new Vec2(-1,0); // down -> left
+		    v1 = new Vec2(-1,0); // down -> left
 		} else if (v.x != 0 && v.y == 0) {
-		    v = new Vec2(0,+1); // left -> down
+		    v1 = new Vec2(0,+1); // left -> down
 		}
 	    } else if (x == GW-1 && y == GH-2) {
 		if (v.x != 0 && v.y == 0) {
-		    v = new Vec2(0,-1); // left -> up
+		    v1 = new Vec2(0,-1); // left -> up
 		} else if (v.x == 0 && v.y != 0) {
-		    v = new Vec2(-1,0); // up -> left
+		    v1 = new Vec2(-1,0); // up -> left
 		}
 	    } else if (x == GW-2 && y == GH-1) {
 		if (v.x != 0 && v.y == 0) {
-		    v = new Vec2(0,+1); // right -> down
+		    v1 = new Vec2(0,+1); // right -> down
 		} else if (v.x == 0 && v.y != 0) {
-		    v = new Vec2(+1,0); // down -> right
+		    v1 = new Vec2(+1,0); // down -> right
 		}
 	    } else if (x == GW-1 && y == GH-1) {
 		if (v.x == 0 && v.y != 0) {
-		    v = new Vec2(+1,0); // up -> right
+		    v1 = new Vec2(+1,0); // up -> right
 		} else if (v.x != 0 && v.y == 0) {
-		    v = new Vec2(0,-1); // right -> up
+		    v1 = new Vec2(0,-1); // right -> up
 		}
 	    }
-	    let v1 = v.scale(4);
-	    if (this.getMove(this.pos, v1).equals(v1)) {
-		this.timeout = 10;
-		this.movement = v;
+	    if (v1 != null && !v1.equals(v)) {
+		let vv = v1.scale(4);
+		if (this.getMove(this.pos, vv).equals(vv)) {
+		    this.timeout = 10;
+		    this.movement = v1;
+		}
+	    } else {
+		this.brakage += Math.random()*0.05;
+		if (1.0 <= this.brakage) {
+		    this.braked = true;
+		}
 	    }
 	} else {
-	    let v1 = v.scale(4);
-	    if (!this.getMove(this.pos, v1).equals(v1)) {
+	    let vv = v.scale(4);
+	    if (!this.getMove(this.pos, vv).equals(vv)) {
 		this.movement = v.rot90(rnd(2)? +1 : -1);
 	    }
 	}
-	v = this.movement.scale(4);
-	let collider = this.getCollider().add(v);
+	let vv = this.movement.scale(8);
+	let collider = this.getCollider().add(vv);
 	if (this.scene.player.getCollider().overlaps(collider) &&
 	    this.scene.player.lastdir.equals(this.movement)) {
 	    ;
 	} else {
-	    this.moveIfPossible(v);
+	    this.moveIfPossible(this.movement.scale(2));
 	}
     }
     
@@ -617,20 +653,14 @@ class MoneyParticle extends Projectile {
 //
 class Player extends Car {
 
-    scoring: number = 0;
-
     constructor(scene: Game, tilemap: TileMap, pos: Vec2) {
 	super(scene, tilemap, pos, 0);
     }
 
-    update() {
-	super.update();
-	if (this.braked && rnd(10) == 0) {
-	    let score = this.scoring * rnd(1,10) + rnd(3);
-	    this.scene.addScore(score);
-	    this.scene.add(new MoneyParticle(this.pos, score));
-	    playSound((0 < score)? SOUNDS['profit'] : SOUNDS['loss']);
-	}
+    addScore(score: number) {
+	this.scene.addScore(score);
+	this.scene.takeMarket(score);
+	playSound((0 < score)? SOUNDS['profit'] : SOUNDS['loss']);
     }
 
     setMove(v: Vec2) {
@@ -638,14 +668,12 @@ class Player extends Car {
 	    (v.x == this.movement.x && v.y == -this.movement.y) ||
 	    (v.x == -this.movement.x && v.y == this.movement.y)) {
 	    // brake
-	    this.movement = new Vec2();
 	    this.braked = true;
-	    this.scoring = this.scene.checkArea(this.getCollider() as Rect);
+	    this.movement = new Vec2();
 	} else if ((v.x != 0 && v.y == 0) || (v.x == 0 && v.y != 0)) {
 	    // steer
-	    this.movement = v.copy();
 	    this.braked = false;
-	    this.scoring = 0;
+	    this.movement = v.copy();
 	}
     }
 
@@ -776,7 +804,7 @@ class Game extends GameScene {
     
     score: number;
     scoreBox: TextBox;
-    scoreLimit: number;
+    marketCap: number;
 
     constructor() {
 	super();
@@ -801,6 +829,7 @@ class Game extends GameScene {
 	this.player.movement = new Vec2(0, -1);
 	this.add(this.player);
 
+	// add cars.
 	for (let i = 0; i < 100; i++) {
 	    let x = rnd(CITY_WIDTH);
 	    let y = rnd(CITY_HEIGHT);
@@ -819,7 +848,8 @@ class Game extends GameScene {
 	    this.add(enemy);
 	}
 
-	for (let i = 0; i < 20; i++) {
+	// add kitties.
+	for (let i = 0; i < 10; i++) {
 	    let x = rnd(CITY_WIDTH);
 	    let y = rnd(CITY_HEIGHT);
 	    if (rnd(2) == 0) {
@@ -835,8 +865,8 @@ class Game extends GameScene {
 	this.updateScore();
 	this.updateAreaMap();
 	
-	//APP.setMusic(SOUNDS['music2'], 5.35, 26.55);
-
+	APP.setMusic(SOUNDS['music2'], 5.35, 26.55);
+	
 	this.t0 = 0;
 	this.ending = false;
 	this.scale = 0;
@@ -848,7 +878,7 @@ class Game extends GameScene {
 	if (this.ending) {
 	    let dt = getTime()-this.t0;
 	    this.scale = 1.0/(dt*dt+1);
-	    if (this.scale < 0.05) {
+	    if (this.scale < 0.1) {
 		this.changeScene(new Ending());
 	    }
 	}
@@ -858,7 +888,7 @@ class Game extends GameScene {
 	    if (dt < 1.0) {
 		this.mapalpha = dt;
 	    } else if (dt < 3.0) {
-		if (this.scoreLimit <= 0) {
+		if (this.marketCap <= 0) {
 		    this.updateAreaMap();
 		    playSound(SOUNDS['change']);
 		}
@@ -953,13 +983,16 @@ class Game extends GameScene {
 	    (x:number, y:number, c:number) => {
 		if (c == T.SIDEWALK_G) {
 		    for (let v of DIRS) {
-			if (0 < this.areamap.get(x+v.x, y+v.y)) {
+			if (0 < this.areamap.get(x+v.x, y+v.y) &&
+			    this.citymap.get(x+v.x, y+v.y) <= T.XING_H) {
 			    this.areamap.set(x+v.x, y+v.y, 0);
 			}
 		    }
 		} else if (c == T.SIDEWALK_F) {
 		    for (let v of DIRS) {
-			this.areamap.set(x+v.x, y+v.y, -1);
+			if (this.citymap.get(x+v.x, y+v.y) <= T.XING_H) {
+			    this.areamap.set(x+v.x, y+v.y, -1);
+			}
 		    }
 		}
 		return false;
@@ -968,7 +1001,7 @@ class Game extends GameScene {
 	    mkCityImage(this.citymap, this.areamap, this.player.pos),
 	    new Rect(-this.citymap.width, -this.citymap.height,
 		     this.citymap.width*2, this.citymap.height*2));
-	this.scoreLimit = 10;//rnd(100)+50;
+	this.marketCap = rnd(100)+50;
     }
 
     checkArea(area: Rect) {
@@ -985,8 +1018,14 @@ class Game extends GameScene {
     addScore(score: number) {
 	this.score += score;
 	this.updateScore();
-	this.scoreLimit -= Math.max(0, score);
-	if (this.scoreLimit <= 0) {
+	if (!this.ending && MAX_SCORE <= this.score) {
+	    this.startEnding();
+	}
+    }
+
+    takeMarket(score: number) {
+	this.marketCap -= Math.max(0, score);
+	if (this.marketCap <= 0) {
 	    this.startTransition();
 	}
     }
@@ -997,9 +1036,11 @@ class Game extends GameScene {
     }
 
     startEnding() {
+	APP.setMusic();
 	this.t0 = getTime();
 	this.ending = true;
 	this.transition = false;
+	this.tasklist.suspended = true;
 	playSound(SOUNDS['zoom']);
     }
 

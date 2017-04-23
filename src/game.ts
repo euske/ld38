@@ -26,8 +26,8 @@ addInitHook(() => {
 	IMAGES['scenes'], new Vec2(200,120), new Vec2(100,0));
     TYCOON = new HTMLImageSource(
 	IMAGES['scenes'], new Rect(60,46,80,60), new Rect(0,0,80,60));
-    AREA_GOOD = new RectImageSource('rgb(0,255,0, 0.3)', new Rect(0,0,16,16)); // good
-    AREA_BAD = new RectImageSource('rgb(255,0,0, 0.3)', new Rect(0,0,16,16)); // bad
+    AREA_GOOD = new RectImageSource('rgba(0,255,0, 0.3)', new Rect(0,0,16,16)); // good
+    AREA_BAD = new RectImageSource('rgba(255,0,0, 0.3)', new Rect(0,0,16,16)); // bad
 });
 
 enum T {
@@ -49,7 +49,7 @@ const GW = 10;
 const GH = 10;
 const CITY_WIDTH = 10;
 const CITY_HEIGHT = 10;
-const MAX_SCORE = 100;
+const MAX_SCORE = 1000;
 
 const COLOR_ROAD = new Color(100,100,100);
 const COLOR_SIDEWALK = new Color(200,200,200);
@@ -510,7 +510,7 @@ class Car extends Entity {
 	this.sprite.imgsrc = SPRITES.get(index, this.type);
 	this.area = this.scene.checkArea(this.getCollider() as Rect);
 	if (this.braked && rnd(10) == 0) {
-	    let score = sign(this.area) * rnd(1,10) + rnd(3);
+	    let score = sign(this.area) * rnd(1,20) + rnd(3);
 	    if (score != 0) {
 		this.scene.add(new MoneyParticle(this.pos, score));
 		this.addScore(score);
@@ -603,7 +603,7 @@ class Enemy extends Car {
 		    v1 = new Vec2(0,-1); // right -> up
 		}
 	    }
-	    if (v1 != null && !v1.equals(v)) {
+	    if (v1 !== null && !v1.equals(v)) {
 		let vv = v1.scale(4);
 		if (this.getMove(this.pos, vv).equals(vv)) {
 		    this.timeout = 10;
@@ -640,9 +640,9 @@ class MoneyParticle extends Projectile {
     
     constructor(pos: Vec2, money: number) {
 	super(pos);
-	let textbox = new TextBox(new Rect(0,0,32,10), FONT);
+	let textbox = new TextBox(new Rect(-16,-10,32,10), FONT);
 	this.sprite.imgsrc = textbox;
-	this.movement = new Vec2(0, (0 < money)? -4 : +4);
+	this.movement = new Vec2(0, (0 < money)? -2 : +2);
 	this.lifetime = 0.5;
 	textbox.putText([getDollar(money)], 'center', 'center');
     }
@@ -663,17 +663,23 @@ class Player extends Car {
 	playSound((0 < score)? SOUNDS['profit'] : SOUNDS['loss']);
     }
 
-    setMove(v: Vec2) {
-	if (!this.movement.isZero() &&
-	    (v.x == this.movement.x && v.y == -this.movement.y) ||
-	    (v.x == -this.movement.x && v.y == this.movement.y)) {
-	    // brake
+    setBrake() {
+	// brake
+	this.movement = new Vec2();
+	if (!this.braked) {
 	    this.braked = true;
-	    this.movement = new Vec2();
-	} else if ((v.x != 0 && v.y == 0) || (v.x == 0 && v.y != 0)) {
+	    playSound(SOUNDS['brake']);
+	}
+    }
+    
+    setMove(v: Vec2) {
+	if ((v.x != 0 && v.y == 0) || (v.x == 0 && v.y != 0)) {
 	    // steer
-	    this.braked = false;
 	    this.movement = v.copy();
+	    if (this.braked) {
+		this.braked = false;
+		playSound(SOUNDS['brake']);
+	    }
 	}
     }
 
@@ -740,7 +746,7 @@ function mkCityMap(hsize: number, vsize: number, nobjs=8) {
     return tilemap;
 }
 
-function mkCityImage(citymap: TileMap, areamap: TileMap, pos: Vec2) {
+function mkCityImage(citymap: TileMap, areamap: TileMap) {
     let canvas = createCanvas(citymap.width, citymap.height);
     let ctx = getEdgeyContext(canvas);
     let img = ctx.createImageData(canvas.width, canvas.height);
@@ -779,9 +785,6 @@ function mkCityImage(citymap: TileMap, areamap: TileMap, pos: Vec2) {
 	}
     }
     ctx.putImageData(img, 0, 0);
-    let rect = citymap.coord2map(pos);
-    ctx.fillStyle = 'yellow';
-    ctx.fillRect(rect.x-1, rect.y-1, rect.width+2, rect.height+2);
     return canvas;
 }
 
@@ -805,6 +808,7 @@ class Game extends GameScene {
     score: number;
     scoreBox: TextBox;
     marketCap: number;
+    banner: BannerBox;
 
     constructor() {
 	super();
@@ -864,12 +868,32 @@ class Game extends GameScene {
 	this.score = 0;
 	this.updateScore();
 	this.updateAreaMap();
-	
-	APP.setMusic(SOUNDS['music2'], 5.35, 26.55);
+
+	this.banner = new BannerBox(
+	    this.screen,
+	    FONT, ['EARN $1000 BUCKS ASAP!']
+	);
+	this.banner.lifetime = 2.0;
+	this.banner.stopped.subscribe(() => {
+	    APP.setMusic(SOUNDS['music2'], 5.35, 26.55);
+	    this.tasklist.suspended = false;
+	    this.banner = null;
+	});
+	this.banner.layer = this.layer;
+	this.banner.init();
+	this.tasklist.suspended = true;
+	playSound(SOUNDS['start']);
 	
 	this.t0 = 0;
 	this.ending = false;
 	this.scale = 0;
+    }
+
+    tick() {
+	super.tick();
+	if (this.banner !== null) {
+	    this.banner.tick();
+	}
     }
 
     update() {
@@ -881,9 +905,7 @@ class Game extends GameScene {
 	    if (this.scale < 0.1) {
 		this.changeScene(new Ending());
 	    }
-	}
-
-	if (this.transition) {
+	} else if (this.transition) {
 	    let dt = getTime()-this.t0;
 	    if (dt < 1.0) {
 		this.mapalpha = dt;
@@ -903,6 +925,9 @@ class Game extends GameScene {
     onDirChanged(v: Vec2) {
 	this.player.setMove(v);
     }
+    onButtonPressed(keysym: KeySym) {
+	this.player.setBrake();
+    }
 
     render(ctx: CanvasRenderingContext2D, bx: number, by: number) {
 	ctx.fillStyle = 'rgb(0,0,0)';
@@ -914,8 +939,7 @@ class Game extends GameScene {
 		this.screen.width*(1-this.scale)/2,
 		this.screen.height*(1-this.scale)/2);
 	    ctx.scale(this.scale, this.scale);
-	}
-	if (this.transition) {
+	} else if (this.transition) {
 	    ctx.save();
 	    ctx.globalAlpha = 1.0-this.mapalpha;
 	}
@@ -939,10 +963,9 @@ class Game extends GameScene {
 	    });
 	super.render(ctx, bx, by);
 	this.scoreBox.render(ctx);
-	if (this.transition) {
-	    ctx.restore();
-	}
 	if (this.ending && 0 < this.scale) {
+	    ctx.restore();
+	} else if (this.transition) {
 	    ctx.restore();
 	}
 
@@ -950,10 +973,13 @@ class Game extends GameScene {
 	    ctx.save();
 	    ctx.globalAlpha = this.mapalpha;
 	    ctx.save();
-	    ctx.translate(this.screen.width/2+32, this.screen.height/2);
+	    ctx.translate(108, 16);
 	    this.cityimg.render(ctx);
+	    let rect = this.citymap.coord2map(this.player.pos);
+	    ctx.fillStyle = 'yellow';
+	    ctx.fillRect(rect.x*2-3, rect.y*2-3, 6, 6);
 	    ctx.restore();
-	    ctx.translate(4, 4);
+	    ctx.translate(8, 8);
 	    TYCOON.render(ctx);
 	    ctx.restore();
 	}
@@ -998,17 +1024,16 @@ class Game extends GameScene {
 		return false;
 	    });
 	this.cityimg = new CanvasImageSource(
-	    mkCityImage(this.citymap, this.areamap, this.player.pos),
-	    new Rect(-this.citymap.width, -this.citymap.height,
-		     this.citymap.width*2, this.citymap.height*2));
-	this.marketCap = rnd(100)+50;
+	    mkCityImage(this.citymap, this.areamap),
+	    new Rect(0, 0, this.citymap.width*2, this.citymap.height*2));
+	this.marketCap = rnd(100)+100;
     }
 
     checkArea(area: Rect) {
 	let p = this.areamap.apply(
 	    (x:number, y:number, a:number) => { return (a != 0); },
 	    this.areamap.coord2map(area));
-	if (p != null) {
+	if (p !== null) {
 	    return this.areamap.get(p.x, p.y);
 	} else {
 	    return 0;

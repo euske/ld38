@@ -353,6 +353,7 @@ class BannerBox extends Widget {
         let textbox = new TextBox(frame, font);
         textbox.lineSpace = lineSpace;
 	textbox.putText(lines, 'center', 'center');
+	textbox.background = 'rgba(0,0,0,0.5)'
         this.sprite = new FixedSprite(new Vec2(), textbox);
     }
 

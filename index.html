@@ -11,18 +11,21 @@ canvas {
  image-rendering: crisp-edges;
  image-rendering: pixelated;
 }
+.green { color: black; background: #88ff88; font-weight: bold; }
+.red { color: black; background: #ff8888; font-weight: bold; }
 </style>
 <script language="javascript" src="js/game.js"></script>
 <body bgcolor="black" text="white" link="cyan" onload="main(Intro1);">
 <h1 align=center>Dot</h1>
 <div style="margin: 1em;" align=center>
   <div id="game" style="position: relative; width: 640px; height: 480px;"></div>
+  <p> <u>Controls ... Arrow keys to steer, Space key to stop.</u>
   <table><tr><td><p>Tips:
     <ul align=left> 
+      <li> Park the truck at <span class=green>green areas</span>. Avoid <span class=red>red areas</span>.
       <li> Keep Right! Cars slow down when you drive the same way.
-      <li> Avoid competitors.
-	Many vendors on the same block will accelerate the area change.
-      <li> Avoid kitties and holes!
+      <li> Avoid competitors in the same area.
+      <li> Watch out for kitties and holes!
     </ul>
   </td></tr></table>
   <p style="font-size:75%;">
@@ -33,6 +36,9 @@ Inspired by <a href="http://www.npr.org/sections/money/2016/05/18/478563359/epis
   <img id="sprites" src="assets/sprites.png">
   <img id="scenes" src="assets/scenes.png">
   <img id="tiles" src="assets/tiles.png">
+  <audio id="start" src="assets/start.mp3" preload="auto"></audio>
+  <audio id="brake" src="assets/brake.mp3" preload="auto"></audio>
+  <audio id="unbrake" src="assets/unbrake.mp3" preload="auto"></audio>
   <audio id="profit" src="assets/profit.mp3" preload="auto"></audio>
   <audio id="loss" src="assets/loss.mp3" preload="auto"></audio>
   <audio id="explosion" src="assets/explosion.mp3" preload="auto"></audio>

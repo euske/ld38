@@ -144,6 +144,8 @@ class TaskList {
 
     /** List of current tasks. */
     tasks: Task[] = [];
+    /** True if the tasklist is suspended. */
+    suspended: boolean = false;
 
     toString() {
 	return ('<TaskList: tasks='+this.tasks+'>');
@@ -156,18 +158,20 @@ class TaskList {
     
     /** Invoked at every frame. Update the current tasks. */
     tick() {
-	for (let task of this.tasks) {
-	    if (task.tasklist === null) {
-		task.tasklist = this;
-		task.init();
+	if (!this.suspended) {
+	    for (let task of this.tasks) {
+		if (task.tasklist === null) {
+		    task.tasklist = this;
+		    task.init();
+		}
+		if (task.running) {
+		    task.tick();
+		}
 	    }
-	    if (task.running) {
-		task.tick();
-	    }
-	}
         
-        // Remove the finished tasks from the list.
-	this.tasks = this.tasks.filter((task: Task) => { return task.running; });
+            // Remove the finished tasks from the list.
+	    this.tasks = this.tasks.filter((task: Task) => { return task.running; });
+	}
     }
 
     /** Add a new Task to the list.

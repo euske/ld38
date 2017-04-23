@@ -13,6 +13,8 @@ let FONT: Font;
 let SPRITES:ImageSpriteSheet;
 let TILES:ImageSpriteSheet;
 let SCENES:ImageSpriteSheet;
+let THATGUY:HTMLImageSource;
+let AREAS:SimpleSpriteSheet;
 addInitHook(() => {
     FONT = new ShadowFont(IMAGES['font'], 'white');
     SPRITES = new ImageSpriteSheet(
@@ -21,10 +23,17 @@ addInitHook(() => {
 	IMAGES['tiles'], new Vec2(16,16), new Vec2(0,0));
     SCENES = new ImageSpriteSheet(
 	IMAGES['scenes'], new Vec2(200,120), new Vec2(100,0));
+    THATGUY = new HTMLImageSource(
+	IMAGES['scenes'], new Rect(60,46,80,60), new Rect(0,0,80,60));
+    AREAS = new SimpleSpriteSheet([
+	null,
+	new RectImageSource('rgb(0,255,0, 0.3)', new Rect(0,0,16,16)),
+	new RectImageSource('rgb(255,0,0, 0.3)', new Rect(0,0,16,16)),
+    ]);
 });
 
 enum T {
-    EMPTY = 0,
+    ROAD = 0,
     ROAD_V = 1,
     ROAD_H = 2,
     XING_V = 3,
@@ -34,9 +43,19 @@ enum T {
     SIDEWALK_G = 7,
     SIDEWALK_F = 8,
 };
+enum A {
+    NONE = 0,
+    GOOD = 1,
+    BAD = 2,
+};
 
 const GW = 10;
 const GH = 10;
+const COLOR_ROAD = new Color(100,100,100);
+const COLOR_SIDEWALK = new Color(200,200,200);
+const COLOR_BAD = new Color(255,0,0);
+const COLOR_GOOD = new Color(0,255,0);
+const COLOR_NONE = new Color(0,0,127);
 
 function rndPt(w: number, h: number) {
     let n = rnd(w*2+h*2);
@@ -55,6 +74,10 @@ function rndPt(w: number, h: number) {
     return new Vec2(w-1, n);
 }
 
+function getDollar(x: number) {
+    return (x < 0)? ('-$'+Math.abs(x)) : ('$'+x);
+}
+
 function mkGalaxy(
     r: number, color: Color) {
     let canvas = createCanvas(r*2, r*2);
@@ -71,10 +94,10 @@ function mkGalaxy(
 	    let a = Math.atan2(y, x)/Math.PI + 1.2; // 0..2
 	    let prob = fmod(a, d)/d*(1.2-d);
 	    if (Math.random() < prob) {
-		data[i++] = color.r*255;
-		data[i++] = color.g*255;
-		data[i++] = color.b*255;
-		data[i++] = color.a*255;
+		data[i++] = color.r;
+		data[i++] = color.g;
+		data[i++] = color.b;
+		data[i++] = 255;
 	    } else {
 		i += 4;
 	    }
@@ -104,10 +127,10 @@ function mkEarth(
 		v = clamp(-2, v, +1);
 		a[x] = v;
 		let color = (v < 0)? color1 : ((v < 0.1)? color2 : color3);
-		data[i++] = color.r*255;
-		data[i++] = color.g*255;
-		data[i++] = color.b*255;
-		data[i++] = color.a*255;
+		data[i++] = color.r;
+		data[i++] = color.g;
+		data[i++] = color.b;
+		data[i++] = 255;
 	    } else {
 		i += 4;
 	    }
@@ -197,9 +220,9 @@ class Ending extends Scene {
     
     constructor() {
 	super();
-	let color1 = new Color(0,0,1);
-	let color2 = new Color(0,1,0);
-	let color3 = new Color(1,1,1);
+	let color1 = new Color(0,0,255);
+	let color2 = new Color(0,255,0);
+	let color3 = new Color(255,255,255);
 	this.earth = new CanvasImageSource(mkEarth(20, color1, color2, color3));
 	this.galaxy = new CanvasImageSource(mkGalaxy(60, color3));
 	this.stars = new ZoomStarsImageSource(this.screen, 100);
@@ -433,6 +456,17 @@ class Intro3 extends PictureScene {
 }
 
 
+//  Kitty
+//
+class Kitty extends Entity {
+    constructor(pos: Vec2) {
+	super(pos);
+	this.sprite.imgsrc = SPRITES.get(8, 1);
+	this.collider = this.sprite.getBounds(new Vec2()).inflate(-4,-4);
+    }
+}
+
+
 //  Car
 //
 class Car extends Entity {
@@ -483,29 +517,6 @@ class Car extends Entity {
     
     getFencesFor(range: Rect, v: Vec2, context: string): Rect[] {
 	return [this.tilemap.bounds];
-    }
-}
-
-
-//  Player
-//
-class Player extends Car {
-
-    constructor(scene: Game, tilemap: TileMap, pos: Vec2) {
-	super(scene, tilemap, pos, 0);
-    }
-
-    setMove(v: Vec2) {
-	if ((v.x == this.movement.x && v.y == -this.movement.y) ||
-	    (v.x == -this.movement.x && v.y == this.movement.y)) {
-	    // brake
-	    this.movement = new Vec2();
-	    this.braked = true;
-	} else if ((v.x != 0 && v.y == 0) || (v.x == 0 && v.y != 0)) {
-	    // steer
-	    this.movement = v.copy();
-	    this.braked = false;
-	}
     }
 }
 
@@ -578,6 +589,74 @@ class Enemy extends Car {
 }
 
 
+//  MoneyParticle
+//
+class MoneyParticle extends Projectile {
+    
+    constructor(pos: Vec2, money: number) {
+	super(pos);
+	let textbox = new TextBox(new Rect(0,0,32,10), FONT);
+	this.sprite.imgsrc = textbox;
+	this.movement = new Vec2(0, (0 < money)? -4 : +4);
+	this.lifetime = 0.5;
+	textbox.putText([getDollar(money)], 'center', 'center');
+    }
+}
+
+
+//  Player
+//
+class Player extends Car {
+
+    scoring: number = 0;
+
+    constructor(scene: Game, tilemap: TileMap, pos: Vec2) {
+	super(scene, tilemap, pos, 0);
+    }
+
+    update() {
+	super.update();
+	if (this.scoring != 0 && rnd(10) == 0) {
+	    let score = this.scoring * rnd(1,10);
+	    this.scene.addScore(score);
+	    this.scene.add(new MoneyParticle(this.pos, score));
+	    playSound((0 < score)? SOUNDS['profit'] : SOUNDS['loss']);
+	}
+    }
+
+    setMove(v: Vec2) {
+	if ((v.x == this.movement.x && v.y == -this.movement.y) ||
+	    (v.x == -this.movement.x && v.y == this.movement.y)) {
+	    // brake
+	    this.movement = new Vec2();
+	    this.braked = true;
+	    this.scoring = this.scene.checkScore(this.getCollider() as Rect);
+	} else if ((v.x != 0 && v.y == 0) || (v.x == 0 && v.y != 0)) {
+	    // steer
+	    this.movement = v.copy();
+	    this.braked = false;
+	    this.scoring = 0;
+	}
+    }
+
+    collidedWith(entity: Entity) {
+	if (entity instanceof Enemy) {
+	    let score = -rnd(10,100);
+	    this.scene.addScore(score);
+	    this.scene.add(new MoneyParticle(this.pos, score));
+	    entity.stop();
+	    playSound(SOUNDS['explosion']);
+	} else if (entity instanceof Kitty) {
+	    let score = -50;
+	    this.scene.addScore(score);
+	    this.scene.add(new MoneyParticle(this.pos, score));
+	    entity.stop();
+	    playSound(SOUNDS['kitty']);
+	}
+    }
+}
+
+
 // mkCityMap
 function mkCityMap(hsize: number, vsize: number, nobjs=8) {
     let tilemap = new TileMap(16, hsize*GW, vsize*GH);
@@ -608,23 +687,77 @@ function mkCityMap(hsize: number, vsize: number, nobjs=8) {
     return tilemap;
 }
 
+function mkCityImage(citymap: TileMap, areamap: TileMap, pos: Vec2) {
+    let canvas = createCanvas(citymap.width, citymap.height);
+    let ctx = getEdgeyContext(canvas);
+    let img = ctx.createImageData(canvas.width, canvas.height);
+    let data = img.data;
+    let i = 0;
+    for (let y = 0; y < citymap.height; y++) {
+	for (let x = 0; x < citymap.width; x++) {
+	    let c = citymap.get(x, y);
+	    let a = areamap.get(x, y);
+	    let color: Color;
+	    switch (c) {
+	    case T.WALL:
+		switch (a) {
+		case A.GOOD:
+		    color = COLOR_GOOD;
+		    break;
+		case A.BAD:
+		    color = COLOR_BAD;
+		    break;
+		default:
+		    color = COLOR_NONE;
+		    break;
+		}
+		break;
+	    case T.SIDEWALK:
+	    case T.SIDEWALK_G:
+	    case T.SIDEWALK_F:
+		color = COLOR_SIDEWALK;
+		break;
+	    default:
+		color = COLOR_ROAD;
+		break;
+	    }
+	    data[i++] = color.r;
+	    data[i++] = color.g;
+	    data[i++] = color.b;
+	    data[i++] = 255;
+	}
+    }
+    ctx.putImageData(img, 0, 0);
+    let rect = citymap.coord2map(pos);
+    ctx.fillStyle = 'yellow';
+    ctx.fillRect(rect.x-1, rect.y-1, rect.width+2, rect.height+2);
+    return canvas;
+}
+
+
 //  Game
 // 
 class Game extends GameScene {
 
     player: Player;
-    tilemap: TileMap;
+    citymap: TileMap;
+    areamap: TileMap;
+    
+    cityimg: CanvasImageSource;
 
     t0: number;
     ending: boolean;
     scale: number;
+    transition: boolean;
+    mapalpha: number;
     
     score: number;
     scoreBox: TextBox;
+    scoreLimit: number;
 
     constructor() {
 	super();
-	this.scoreBox = new TextBox(new Rect(4,4,80,16), FONT);
+	this.scoreBox = new TextBox(new Rect(4,4,64,16), FONT);
 	this.scoreBox.background = 'rgba(0,0,0,0.7)';
 	this.scoreBox.padding = 4;
     }
@@ -632,15 +765,16 @@ class Game extends GameScene {
     init() {
 	super.init();
 
-	this.tilemap = mkCityMap(10, 10);
-	this.tilemap.isObstacle = ((c:number) => {
+	this.citymap = mkCityMap(10, 10);
+	this.citymap.isObstacle = ((c:number) => {
 	    return (c < 0 || c == T.WALL || T.SIDEWALK <= c);
 	});
-
+	this.areamap = new TileMap(16, this.citymap.width, this.citymap.height);
+	
 	let p = new Vec2(8, 8);
 	this.player = new Player(
-	    this, this.tilemap, 
-	    this.tilemap.map2coord(p).center());
+	    this, this.citymap, 
+	    this.citymap.map2coord(p).center());
 	this.add(this.player);
 
 	for (let i = 0; i < 100; i++) {
@@ -652,17 +786,31 @@ class Game extends GameScene {
 		p = new Vec2(x*10+8+side, y*10+rnd(8));
 		v = new Vec2(0, side? -1 : +1);
 	    } else {
-		p = new Vec2(x*10+rnd(8), y*10+8+rnd(2));
+		p = new Vec2(x*10+rnd(8), y*10+8+side);
 		v = new Vec2(side? +1 : -1, 0);
 	    }
 	    let enemy = new Enemy(
-		this, this.tilemap,
-		this.tilemap.map2coord(p).center(), v);
+		this, this.citymap,
+		this.citymap.map2coord(p).center(), v);
 	    this.add(enemy);
+	}
+
+	for (let i = 0; i < 20; i++) {
+	    let x = rnd(10);
+	    let y = rnd(10);
+	    if (rnd(2) == 0) {
+		p = new Vec2(x*10+8+rnd(2), y*10+rnd(8));
+	    } else {
+		p = new Vec2(x*10+rnd(8), y*10+8+rnd(2));
+	    }
+	    let kitty = new Kitty(this.citymap.map2coord(p).center());
+	    this.add(kitty);
 	}
 
 	this.score = 0;
 	this.updateScore();
+	this.updateMap();
+	
 	//APP.setMusic(SOUNDS['music2'], 5.35, 26.55);
 
 	this.t0 = 0;
@@ -680,6 +828,22 @@ class Game extends GameScene {
 		this.changeScene(new Ending());
 	    }
 	}
+
+	if (this.transition) {
+	    let dt = getTime()-this.t0;
+	    if (dt < 1.0) {
+		this.mapalpha = dt;
+	    } else if (dt < 2.0) {
+		if (this.scoreLimit <= 0) {
+		    this.updateMap();
+		    playSound(SOUNDS['change']);
+		}
+	    } else if (dt < 3.0) {
+		this.mapalpha = 3.0-dt;		
+	    } else {
+		this.endTransition();
+	    }
+	}
     }
 
     onDirChanged(v: Vec2) {
@@ -690,33 +854,120 @@ class Game extends GameScene {
 	ctx.fillStyle = 'rgb(0,0,0)';
 	ctx.fillRect(bx, by, this.screen.width, this.screen.height);
 
-	if (0 < this.scale) {
+	if (this.ending && 0 < this.scale) {
 	    ctx.save();
 	    ctx.translate(
 		this.screen.width*(1-this.scale)/2,
 		this.screen.height*(1-this.scale)/2);
 	    ctx.scale(this.scale, this.scale);
 	}
+	if (this.transition) {
+	    ctx.save();
+	    ctx.globalAlpha = 1.0-this.mapalpha;
+	}
 	let window = this.player.pos.expand(160, 120);
-	this.layer.setCenter(this.tilemap.bounds, window);
-	this.tilemap.renderWindowFromBottomLeft(
+	this.layer.setCenter(this.citymap.bounds, window);
+	this.citymap.renderWindowFromBottomLeft(
 	    ctx, bx, by, this.layer.window,
 	    (x,y,c) => { return TILES.get((0 <= c)? c : T.WALL); });
+	this.citymap.renderWindowFromBottomLeft(
+	    ctx, bx, by, this.layer.window,
+	    (x,y,c) => {
+		let a = this.areamap.get(x,y);
+		if (c <= T.XING_H) {
+		    return AREAS.get(a);
+		}
+		return null;
+	    });
 	super.render(ctx, bx, by);
 	this.scoreBox.render(ctx);
-	if (0 < this.scale) {
+	if (this.transition) {
 	    ctx.restore();
+	}
+	if (this.ending && 0 < this.scale) {
+	    ctx.restore();
+	}
+
+	if (this.transition) {
+	    ctx.save();
+	    ctx.globalAlpha = this.mapalpha;
+	    ctx.save();
+	    ctx.translate(this.screen.width/2+32, this.screen.height/2);
+	    this.cityimg.render(ctx);
+	    ctx.restore();
+	    ctx.translate(4, 4);
+	    THATGUY.render(ctx);
+	    ctx.restore();
+	}
+    }
+
+    updateMap() {
+	this.areamap.fill(A.NONE);
+	for (let i = 0; i < 10; i++) {
+	    let x = rnd(10)*GW;
+	    let y = rnd(10)*GH;
+	    for (let dy = -1; dy < GH-1; dy++) {
+		for (let dx = -1; dx < GW-1; dx++) {
+		    this.areamap.set(x+dx, y+dy, A.GOOD);
+		}
+	    }
+	}
+	for (let i = 0; i < 10; i++) {
+	    let x = rnd(10)*GW;
+	    let y = rnd(10)*GH;
+	    for (let dy = -1; dy < GH-1; dy++) {
+		for (let dx = -1; dx < GW-1; dx++) {
+		    this.areamap.set(x+dx, y+dy, A.BAD);
+		}
+	    }
+	}
+	this.cityimg = new CanvasImageSource(
+	    mkCityImage(this.citymap, this.areamap, this.player.pos),
+	    new Rect(-this.citymap.width, -this.citymap.height,
+		     this.citymap.width*2, this.citymap.height*2));
+	this.scoreLimit = 10;//rnd(100)+50;
+    }
+
+    checkScore(rect: Rect) {
+	if (this.areamap.findTileByCoord((a:number) => { return a == A.GOOD; }, rect)) {
+	    return +1;
+	} else if (this.areamap.findTileByCoord((a:number) => { return a == A.BAD; }, rect)) {
+	    return -1;
+	} else {
+	    return 0;
+	}
+    }
+
+    addScore(score: number) {
+	this.score += score;
+	this.updateScore();
+	this.scoreLimit -= Math.max(0, score);
+	if (this.scoreLimit <= 0) {
+	    this.startTransition();
 	}
     }
 
     updateScore() {
 	this.scoreBox.clear();
-	this.scoreBox.putText([this.score.toString()]);
+	this.scoreBox.putText([getDollar(this.score)], 'right');
     }
 
     startEnding() {
 	this.t0 = getTime();
 	this.ending = true;
+	this.transition = false;
 	playSound(SOUNDS['zoom']);
+    }
+
+    startTransition() {
+	this.t0 = getTime();
+	this.tasklist.suspended = true;
+	this.transition = true;
+	this.mapalpha = 0;
+    }
+
+    endTransition() {
+	this.tasklist.suspended = false;
+	this.transition = false;
     }
 }

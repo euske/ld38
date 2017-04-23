@@ -13,8 +13,9 @@ let FONT: Font;
 let SPRITES:ImageSpriteSheet;
 let TILES:ImageSpriteSheet;
 let SCENES:ImageSpriteSheet;
-let THATGUY:HTMLImageSource;
-let AREAS:SimpleSpriteSheet;
+let TYCOON:ImageSource;
+let AREA_GOOD:ImageSource;
+let AREA_BAD:ImageSource;
 addInitHook(() => {
     FONT = new ShadowFont(IMAGES['font'], 'white');
     SPRITES = new ImageSpriteSheet(
@@ -23,13 +24,10 @@ addInitHook(() => {
 	IMAGES['tiles'], new Vec2(16,16), new Vec2(0,0));
     SCENES = new ImageSpriteSheet(
 	IMAGES['scenes'], new Vec2(200,120), new Vec2(100,0));
-    THATGUY = new HTMLImageSource(
+    TYCOON = new HTMLImageSource(
 	IMAGES['scenes'], new Rect(60,46,80,60), new Rect(0,0,80,60));
-    AREAS = new SimpleSpriteSheet([
-	null,
-	new RectImageSource('rgb(0,255,0, 0.3)', new Rect(0,0,16,16)),
-	new RectImageSource('rgb(255,0,0, 0.3)', new Rect(0,0,16,16)),
-    ]);
+    AREA_GOOD = new RectImageSource('rgb(0,255,0, 0.3)', new Rect(0,0,16,16)); // good
+    AREA_BAD = new RectImageSource('rgb(255,0,0, 0.3)', new Rect(0,0,16,16)); // bad
 });
 
 enum T {
@@ -39,23 +37,26 @@ enum T {
     XING_V = 3,
     XING_H = 4,
     WALL = 5,
-    SIDEWALK = 6,
-    SIDEWALK_G = 7,
-    SIDEWALK_F = 8,
-};
-enum A {
-    NONE = 0,
-    GOOD = 1,
-    BAD = 2,
+    WALL_W = 6,
+    WALL_S = 7,
+    SIDEWALK = 8,
+    SIDEWALK_G = 9,
+    SIDEWALK_F = 10,
+    HOLE = 11,
 };
 
 const GW = 10;
 const GH = 10;
+const CITY_WIDTH = 10;
+const CITY_HEIGHT = 10;
+
 const COLOR_ROAD = new Color(100,100,100);
 const COLOR_SIDEWALK = new Color(200,200,200);
 const COLOR_BAD = new Color(255,0,0);
 const COLOR_GOOD = new Color(0,255,0);
 const COLOR_NONE = new Color(0,0,127);
+
+const DIRS = [ new Vec2(-1,0), new Vec2(+1,0), new Vec2(0,-1), new Vec2(0,+1) ];
 
 function rndPt(w: number, h: number) {
     let n = rnd(w*2+h*2);
@@ -491,7 +492,6 @@ class Car extends Entity {
     update() {
 	super.update();
 	this.run();
-	this.moveIfPossible(this.movement.scale(4));
 	if (!this.movement.isZero()) {
 	    this.lastdir = this.movement.copy();
 	}
@@ -509,6 +509,7 @@ class Car extends Entity {
     }
 
     run() {
+	this.moveIfPossible(this.movement.scale(4));
     }
     
     getObstaclesFor(range: Rect, v: Vec2, context=null as string): Rect[] {
@@ -584,6 +585,14 @@ class Enemy extends Car {
 		this.movement = v.rot90(rnd(2)? +1 : -1);
 	    }
 	}
+	v = this.movement.scale(4);
+	let collider = this.getCollider().add(v);
+	if (this.scene.player.getCollider().overlaps(collider) &&
+	    this.scene.player.lastdir.equals(this.movement)) {
+	    ;
+	} else {
+	    this.moveIfPossible(v);
+	}
     }
     
 }
@@ -616,8 +625,8 @@ class Player extends Car {
 
     update() {
 	super.update();
-	if (this.scoring != 0 && rnd(10) == 0) {
-	    let score = this.scoring * rnd(1,10);
+	if (this.braked && rnd(10) == 0) {
+	    let score = this.scoring * rnd(1,10) + rnd(3);
 	    this.scene.addScore(score);
 	    this.scene.add(new MoneyParticle(this.pos, score));
 	    playSound((0 < score)? SOUNDS['profit'] : SOUNDS['loss']);
@@ -625,12 +634,13 @@ class Player extends Car {
     }
 
     setMove(v: Vec2) {
-	if ((v.x == this.movement.x && v.y == -this.movement.y) ||
+	if (!this.movement.isZero() &&
+	    (v.x == this.movement.x && v.y == -this.movement.y) ||
 	    (v.x == -this.movement.x && v.y == this.movement.y)) {
 	    // brake
 	    this.movement = new Vec2();
 	    this.braked = true;
-	    this.scoring = this.scene.checkScore(this.getCollider() as Rect);
+	    this.scoring = this.scene.checkArea(this.getCollider() as Rect);
 	} else if ((v.x != 0 && v.y == 0) || (v.x == 0 && v.y != 0)) {
 	    // steer
 	    this.movement = v.copy();
@@ -666,6 +676,14 @@ function mkCityMap(hsize: number, vsize: number, nobjs=8) {
 	    let x = j*GW;
 	    tilemap.fill(T.SIDEWALK, new Rect(x,y,GW-2,GH-2));
 	    tilemap.fill(T.WALL, new Rect(x+1,y+1,GW-4,GH-4));
+	    tilemap.fill(T.WALL_S, new Rect(x+GW-4,y+2,1,GH-6));
+	    for (let dy = 2; dy < GH-4; dy++) {
+		for (let dx = 1; dx < GW-4; dx++) {
+		    if (dx % 2 == 0 && dy % 2 == 1) {
+			tilemap.set(x+dx, y+dy, T.WALL_W);
+		    }
+		}
+	    }
 	    tilemap.fill(T.ROAD_V, new Rect(x+GW-2,y+1,2,GH-4));
 	    tilemap.fill(T.ROAD_H, new Rect(x+1,y+GH-2,GW-4,2));
 	    tilemap.set(x+GW-2,y, T.XING_H);
@@ -681,6 +699,13 @@ function mkCityMap(hsize: number, vsize: number, nobjs=8) {
 		let p = rndPt(GW-2, GH-2);
 		tilemap.set(x+p.x, y+p.y,
 			    (rnd(2)==0)? T.SIDEWALK_G :  T.SIDEWALK_F);
+	    }
+	    for (let k = 0; k < 2; k++) {
+		let dx = rnd(GW);
+		let dy = rnd(GH);
+		if (tilemap.get(x+dx, y+dy) <= T.ROAD_H) {
+		    tilemap.set(x+dx, y+dy, T.HOLE)
+		}
 	    }
 	}
     }
@@ -700,16 +725,14 @@ function mkCityImage(citymap: TileMap, areamap: TileMap, pos: Vec2) {
 	    let color: Color;
 	    switch (c) {
 	    case T.WALL:
-		switch (a) {
-		case A.GOOD:
+	    case T.WALL_W:
+	    case T.WALL_S:
+		if (0 < a) {
 		    color = COLOR_GOOD;
-		    break;
-		case A.BAD:
+		} else if (a < 0) {
 		    color = COLOR_BAD;
-		    break;
-		default:
+		} else {
 		    color = COLOR_NONE;
-		    break;
 		}
 		break;
 	    case T.SIDEWALK:
@@ -765,28 +788,29 @@ class Game extends GameScene {
     init() {
 	super.init();
 
-	this.citymap = mkCityMap(10, 10);
+	this.citymap = mkCityMap(CITY_WIDTH, CITY_HEIGHT);
 	this.citymap.isObstacle = ((c:number) => {
-	    return (c < 0 || c == T.WALL || T.SIDEWALK <= c);
+	    return (c < 0 || T.WALL <= c);
 	});
 	this.areamap = new TileMap(16, this.citymap.width, this.citymap.height);
 	
-	let p = new Vec2(8, 8);
+	let p = new Vec2(GW*4+GW-1, GH*4+GH-2);
 	this.player = new Player(
 	    this, this.citymap, 
 	    this.citymap.map2coord(p).center());
+	this.player.movement = new Vec2(0, -1);
 	this.add(this.player);
 
 	for (let i = 0; i < 100; i++) {
-	    let x = rnd(10);
-	    let y = rnd(10);
+	    let x = rnd(CITY_WIDTH);
+	    let y = rnd(CITY_HEIGHT);
 	    let v;
 	    let side = rnd(2);
 	    if (rnd(2) == 0) {
-		p = new Vec2(x*10+8+side, y*10+rnd(8));
+		p = new Vec2(x*GW+8+side, y*GH+rnd(8));
 		v = new Vec2(0, side? -1 : +1);
 	    } else {
-		p = new Vec2(x*10+rnd(8), y*10+8+side);
+		p = new Vec2(x*GW+rnd(8), y*GH+8+side);
 		v = new Vec2(side? +1 : -1, 0);
 	    }
 	    let enemy = new Enemy(
@@ -796,12 +820,12 @@ class Game extends GameScene {
 	}
 
 	for (let i = 0; i < 20; i++) {
-	    let x = rnd(10);
-	    let y = rnd(10);
+	    let x = rnd(CITY_WIDTH);
+	    let y = rnd(CITY_HEIGHT);
 	    if (rnd(2) == 0) {
-		p = new Vec2(x*10+8+rnd(2), y*10+rnd(8));
+		p = new Vec2(x*GW+8+rnd(2), y*GH+rnd(8));
 	    } else {
-		p = new Vec2(x*10+rnd(8), y*10+8+rnd(2));
+		p = new Vec2(x*GW+rnd(8), y*GH+8+rnd(2));
 	    }
 	    let kitty = new Kitty(this.citymap.map2coord(p).center());
 	    this.add(kitty);
@@ -809,7 +833,7 @@ class Game extends GameScene {
 
 	this.score = 0;
 	this.updateScore();
-	this.updateMap();
+	this.updateAreaMap();
 	
 	//APP.setMusic(SOUNDS['music2'], 5.35, 26.55);
 
@@ -833,13 +857,13 @@ class Game extends GameScene {
 	    let dt = getTime()-this.t0;
 	    if (dt < 1.0) {
 		this.mapalpha = dt;
-	    } else if (dt < 2.0) {
+	    } else if (dt < 3.0) {
 		if (this.scoreLimit <= 0) {
-		    this.updateMap();
+		    this.updateAreaMap();
 		    playSound(SOUNDS['change']);
 		}
-	    } else if (dt < 3.0) {
-		this.mapalpha = 3.0-dt;		
+	    } else if (dt < 4.0) {
+		this.mapalpha = 4.0-dt;		
 	    } else {
 		this.endTransition();
 	    }
@@ -865,17 +889,21 @@ class Game extends GameScene {
 	    ctx.save();
 	    ctx.globalAlpha = 1.0-this.mapalpha;
 	}
-	let window = this.player.pos.expand(160, 120);
+	let window = this.player.pos.expand(300, 200);
 	this.layer.setCenter(this.citymap.bounds, window);
 	this.citymap.renderWindowFromBottomLeft(
 	    ctx, bx, by, this.layer.window,
 	    (x,y,c) => { return TILES.get((0 <= c)? c : T.WALL); });
-	this.citymap.renderWindowFromBottomLeft(
+	this.areamap.renderWindowFromBottomLeft(
 	    ctx, bx, by, this.layer.window,
-	    (x,y,c) => {
-		let a = this.areamap.get(x,y);
+	    (x,y,a) => {
+		let c = this.citymap.get(x,y);
 		if (c <= T.XING_H) {
-		    return AREAS.get(a);
+		    if (0 < a) {
+			return AREA_GOOD;
+		    } else if (a < 0) {
+			return AREA_BAD;
+		    }
 		}
 		return null;
 	    });
@@ -896,31 +924,46 @@ class Game extends GameScene {
 	    this.cityimg.render(ctx);
 	    ctx.restore();
 	    ctx.translate(4, 4);
-	    THATGUY.render(ctx);
+	    TYCOON.render(ctx);
 	    ctx.restore();
 	}
     }
 
-    updateMap() {
-	this.areamap.fill(A.NONE);
-	for (let i = 0; i < 10; i++) {
-	    let x = rnd(10)*GW;
-	    let y = rnd(10)*GH;
+    updateAreaMap() {
+	this.areamap.fill(0);
+	for (let i = 1; i <= 10; i++) {
+	    let x = rnd(CITY_WIDTH)*GW;
+	    let y = rnd(CITY_HEIGHT)*GH;
 	    for (let dy = -1; dy < GH-1; dy++) {
 		for (let dx = -1; dx < GW-1; dx++) {
-		    this.areamap.set(x+dx, y+dy, A.GOOD);
+		    this.areamap.set(x+dx, y+dy, +i);
 		}
 	    }
 	}
-	for (let i = 0; i < 10; i++) {
-	    let x = rnd(10)*GW;
-	    let y = rnd(10)*GH;
+	for (let i = 1; i <= 10; i++) {
+	    let x = rnd(CITY_WIDTH)*GW;
+	    let y = rnd(CITY_HEIGHT)*GH;
 	    for (let dy = -1; dy < GH-1; dy++) {
 		for (let dx = -1; dx < GW-1; dx++) {
-		    this.areamap.set(x+dx, y+dy, A.BAD);
+		    this.areamap.set(x+dx, y+dy, -1);
 		}
 	    }
 	}
+	this.citymap.apply(
+	    (x:number, y:number, c:number) => {
+		if (c == T.SIDEWALK_G) {
+		    for (let v of DIRS) {
+			if (0 < this.areamap.get(x+v.x, y+v.y)) {
+			    this.areamap.set(x+v.x, y+v.y, 0);
+			}
+		    }
+		} else if (c == T.SIDEWALK_F) {
+		    for (let v of DIRS) {
+			this.areamap.set(x+v.x, y+v.y, -1);
+		    }
+		}
+		return false;
+	    });
 	this.cityimg = new CanvasImageSource(
 	    mkCityImage(this.citymap, this.areamap, this.player.pos),
 	    new Rect(-this.citymap.width, -this.citymap.height,
@@ -928,11 +971,12 @@ class Game extends GameScene {
 	this.scoreLimit = 10;//rnd(100)+50;
     }
 
-    checkScore(rect: Rect) {
-	if (this.areamap.findTileByCoord((a:number) => { return a == A.GOOD; }, rect)) {
-	    return +1;
-	} else if (this.areamap.findTileByCoord((a:number) => { return a == A.BAD; }, rect)) {
-	    return -1;
+    checkArea(area: Rect) {
+	let p = this.areamap.apply(
+	    (x:number, y:number, a:number) => { return (a != 0); },
+	    this.areamap.coord2map(area));
+	if (p != null) {
+	    return this.areamap.get(p.x, p.y);
 	} else {
 	    return 0;
 	}

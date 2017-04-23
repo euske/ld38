@@ -14,7 +14,7 @@ let SPRITES:ImageSpriteSheet;
 let TILES:ImageSpriteSheet;
 let SCENES:ImageSpriteSheet;
 addInitHook(() => {
-    FONT = new Font(IMAGES['font'], 'white');
+    FONT = new ShadowFont(IMAGES['font'], 'white');
     SPRITES = new ImageSpriteSheet(
 	IMAGES['sprites'], new Vec2(16,16), new Vec2(8,8));
     TILES = new ImageSpriteSheet(
@@ -23,6 +23,34 @@ addInitHook(() => {
 	IMAGES['scenes'], new Vec2(200,120), new Vec2(100,0));
 });
 
+enum T {
+    EMPTY = 0,
+    ROAD_V = 1,
+    ROAD_H = 2,
+    XING_V = 3,
+    XING_H = 4,
+    WALL = 5,
+    SIDEWALK = 6,
+    SIDEWALK_G = 7,
+    SIDEWALK_F = 8,
+};
+
+function rndPt(w: number, h: number) {
+    let n = rnd(w*2+h*2);
+    if (n < w) {
+	return new Vec2(n, 0);
+    }
+    n -= w;
+    if (n < w) {
+	return new Vec2(n, h-1);
+    }
+    n -= w;
+    if (n < h) {
+	return new Vec2(0, n);
+    }
+    n -= h;
+    return new Vec2(w-1, n);
+}
 
 function mkGalaxy(
     r: number, color: Color) {
@@ -342,9 +370,9 @@ class PictureScene extends GameScene {
 }
 
 
-//  Scene1
+//  Intro
 // 
-class Scene1 extends PictureScene {
+class Intro1 extends PictureScene {
     constructor() {
 	super();
 	this.image1 = SCENES.get(0);
@@ -352,20 +380,17 @@ class Scene1 extends PictureScene {
     init() {
 	super.init();
 	this.dialogBox.addDisplay(
-	    'I am a real estate tycoon guy.\n', 10);
+	    'I am a real estate tycoon guy.\n');
 	this.dialogBox.addDisplay(
-	    'I build things around.\n', 10);
+	    'I build things around.\n');
 	let wait = this.dialogBox.addWait();
 	wait.ended.subscribe(() => {
-	    this.changeScene(new Scene2());
+	    this.changeScene(new Intro2());
 	});
     }
 }
 
-
-//  Scene2
-// 
-class Scene2 extends PictureScene {
+class Intro2 extends PictureScene {
     constructor() {
 	super();
 	this.image1 = SCENES.get(1);
@@ -373,39 +398,92 @@ class Scene2 extends PictureScene {
     init() {
 	super.init();
 	this.dialogBox.addDisplay(
-	    'From this vantage point, everything looks like a dot.\n', 10);
+	    'From this vantage point, everything looks like a dot.\n');
 	this.dialogBox.addDisplay(
-	    'The world looks very small.\n', 10);
+	    'The world looks very small.\n');
+	let wait = this.dialogBox.addWait();
+	wait.ended.subscribe(() => {
+	    this.changeScene(new Intro3());
+	});
+    }
+}
+
+class Intro3 extends PictureScene {
+    constructor() {
+	super();
+	this.image1 = SCENES.get(2);
+    }
+    init() {
+	super.init();
+	this.dialogBox.addDisplay(
+	    'I\'m a food vendor guy.\n');
+	this.dialogBox.addDisplay(
+	    'This entire city is my battlefield.\n');
+	this.dialogBox.addDisplay(
+	    'Every morning, I find the best parking spot for my food truck.\n');
+	let wait = this.dialogBox.addWait();
+	wait.ended.subscribe(() => {
+	    this.changeScene(new Game());
+	});
+    }
+}
+
+
+//  Car
+//
+class Car extends Entity {
+
+    scene: Game;
+    tilemap: TileMap;
+    type: number;
+    movement: Vec2 = new Vec2(0,-1);
+
+    constructor(scene: Game, tilemap: TileMap, pos: Vec2, type=0) {
+	super(pos);
+	this.scene = scene;
+	this.tilemap = tilemap;
+	this.type = type;
+	this.sprite.imgsrc = SPRITES.get(0, this.type);
+	this.collider = this.sprite.getBounds(new Vec2());
+    }
+
+    update() {
+	super.update();
+	this.moveIfPossible(this.movement.scale(8));
+	if (this.movement.y < 0) {
+	    this.sprite.imgsrc = SPRITES.get(0, this.type);
+	} else if (0 < this.movement.x) {
+	    this.sprite.imgsrc = SPRITES.get(1, this.type);
+	} else if (0 < this.movement.y) {
+	    this.sprite.imgsrc = SPRITES.get(2, this.type);
+	} else if (this.movement.x < 0) {
+	    this.sprite.imgsrc = SPRITES.get(3, this.type);
+	}
+    }
+    
+    getObstaclesFor(range: Rect, v: Vec2, context=null as string): Rect[] {
+	return this.tilemap.getTileRects(this.tilemap.isObstacle, range);
+    }
+    
+    getFencesFor(range: Rect, v: Vec2, context: string): Rect[] {
+	return [this.tilemap.bounds];
     }
 }
 
 
 //  Player
 //
-class Player extends Entity {
-
-    scene: Game;
-    usermove: Vec2 = new Vec2();
-
-    constructor(scene: Game, pos: Vec2) {
-	super(pos);
-	this.scene = scene;
-	this.sprite.imgsrc = SPRITES.get(0);
-	this.collider = this.sprite.getBounds(new Vec2());
-    }
-
-    update() {
-	super.update();
-	this.moveIfPossible(this.usermove);
-    }
+class Player extends Car {
     
     setMove(v: Vec2) {
-	this.usermove = v.scale(4);
-    }
-    
-    getFencesFor(range: Rect, v: Vec2, context: string): Rect[] {
-	// Restrict its position within the screen.
-	return [this.scene.screen];
+	if ((v.x == this.movement.x && v.y == -this.movement.y) ||
+	    (v.x == -this.movement.x && v.y == this.movement.y)) {
+	    // brake
+	    this.movement = new Vec2();
+	} else if ((v.x != 0 && v.y == 0) || (v.x == 0 && v.y != 0)) {
+	    // steer
+	    this.movement = v.copy();
+	}
     }
 }
 
@@ -416,28 +494,78 @@ class Game extends GameScene {
 
     player: Player;
     tilemap: TileMap;
+
+    t0: number;
+    ending: boolean;
+    scale: number;
     
     score: number;
     scoreBox: TextBox;
 
     constructor() {
 	super();
-	this.scoreBox = new TextBox(this.screen.inflate(-2,-2), FONT);
+	this.scoreBox = new TextBox(new Rect(4,4,80,16), FONT);
+	this.scoreBox.background = 'rgba(0,0,0,0.7)';
+	this.scoreBox.padding = 4;
     }
     
     init() {
 	super.init();
-	
-	this.player = new Player(this, this.screen.center());
+
+	this.tilemap = new TileMap(16, 100, 100);
+	this.tilemap.isObstacle = ((c:number) => {
+	    return (c < 0 || c == T.WALL || T.SIDEWALK <= c);
+	});
+	for (let i = 0; i < 10; i++) {
+	    let y = i*10;
+	    for (let j = 0; j < 10; j++) {
+		let x = j*10;
+		this.tilemap.fill(T.SIDEWALK, new Rect(x,y,8,8));
+		this.tilemap.fill(T.WALL, new Rect(x+1,y+1,6,6));
+		this.tilemap.fill(T.ROAD_V, new Rect(x+8,y+1,2,6));
+		this.tilemap.fill(T.ROAD_H, new Rect(x+1,y+8,6,2));
+		this.tilemap.set(x+8,y, T.XING_H);
+		this.tilemap.set(x+9,y, T.XING_H);
+		this.tilemap.set(x+8,y+7, T.XING_H);
+		this.tilemap.set(x+9,y+7, T.XING_H);
+		this.tilemap.set(x,y+8, T.XING_V);
+		this.tilemap.set(x,y+9, T.XING_V);
+		this.tilemap.set(x+7,y+8, T.XING_V);
+		this.tilemap.set(x+7,y+9, T.XING_V);
+		let n = rnd(8);
+		for (let k = 0; k < n; k++) {
+		    let p = rndPt(8, 8);
+		    this.tilemap.set(x+p.x, y+p.y,
+				     (rnd(2)==0)? T.SIDEWALK_G :  T.SIDEWALK_F);
+		}
+	    }
+	}
+
+	let p = new Vec2(8, 8);
+	this.player = new Player(
+	    this, this.tilemap, 
+	    this.tilemap.map2coord(p).center());
 	this.add(this.player);
 
 	this.score = 0;
 	this.updateScore();
 	//APP.setMusic(SOUNDS['music2'], 5.35, 26.55);
+
+	this.t0 = 0;
+	this.ending = false;
+	this.scale = 0;
     }
 
     update() {
 	super.update();
+	
+	if (this.ending) {
+	    let dt = getTime()-this.t0;
+	    this.scale = 1.0/(dt*dt+1);
+	    if (this.scale < 0.05) {
+		this.changeScene(new Ending());
+	    }
+	}
     }
 
     onDirChanged(v: Vec2) {
@@ -447,12 +575,34 @@ class Game extends GameScene {
     render(ctx: CanvasRenderingContext2D, bx: number, by: number) {
 	ctx.fillStyle = 'rgb(0,0,0)';
 	ctx.fillRect(bx, by, this.screen.width, this.screen.height);
+
+	if (0 < this.scale) {
+	    ctx.save();
+	    ctx.translate(
+		this.screen.width*(1-this.scale)/2,
+		this.screen.height*(1-this.scale)/2);
+	    ctx.scale(this.scale, this.scale);
+	}
+	let window = this.player.pos.expand(160, 120);
+	this.layer.setCenter(this.tilemap.bounds, window);
+	this.tilemap.renderWindowFromBottomLeft(
+	    ctx, bx, by, this.layer.window,
+	    (x,y,c) => { return TILES.get((0 <= c)? c : T.WALL); });
 	super.render(ctx, bx, by);
 	this.scoreBox.render(ctx);
+	if (0 < this.scale) {
+	    ctx.restore();
+	}
     }
 
     updateScore() {
 	this.scoreBox.clear();
 	this.scoreBox.putText([this.score.toString()]);
+    }
+
+    startEnding() {
+	this.t0 = getTime();
+	this.ending = true;
+	playSound(SOUNDS['zoom']);
     }
 }

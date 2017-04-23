@@ -11,11 +11,14 @@
 //  Initialize the resources.
 let FONT: Font;
 let SPRITES:ImageSpriteSheet;
+let TILES:ImageSpriteSheet;
 let SCENES:ImageSpriteSheet;
 addInitHook(() => {
     FONT = new Font(IMAGES['font'], 'white');
     SPRITES = new ImageSpriteSheet(
 	IMAGES['sprites'], new Vec2(16,16), new Vec2(8,8));
+    TILES = new ImageSpriteSheet(
+	IMAGES['tiles'], new Vec2(16,16), new Vec2(0,0));
     SCENES = new ImageSpriteSheet(
 	IMAGES['scenes'], new Vec2(200,120), new Vec2(100,0));
 });
@@ -174,7 +177,7 @@ class Ending extends Scene {
 	    FONT);
 	this.textBox.lineSpace = 8;
 	this.textBox.putText([
-	    'PALE BLUE DOT',
+	    'DOT',
 	    'LUDUM DARE 38 "A SMALL WORLD"',
 	    'THANKS FOR PLAYING'
 	], 'center', 'center');
@@ -341,7 +344,7 @@ class PictureScene extends GameScene {
 
 //  Scene1
 // 
-class Game extends PictureScene {
+class Scene1 extends PictureScene {
     constructor() {
 	super();
 	this.image1 = SCENES.get(0);
@@ -373,5 +376,83 @@ class Scene2 extends PictureScene {
 	    'From this vantage point, everything looks like a dot.\n', 10);
 	this.dialogBox.addDisplay(
 	    'The world looks very small.\n', 10);
+    }
+}
+
+
+//  Player
+//
+class Player extends Entity {
+
+    scene: Game;
+    usermove: Vec2 = new Vec2();
+
+    constructor(scene: Game, pos: Vec2) {
+	super(pos);
+	this.scene = scene;
+	this.sprite.imgsrc = SPRITES.get(0);
+	this.collider = this.sprite.getBounds(new Vec2());
+    }
+
+    update() {
+	super.update();
+	this.moveIfPossible(this.usermove);
+    }
+    
+    setMove(v: Vec2) {
+	this.usermove = v.scale(4);
+    }
+    
+    getFencesFor(range: Rect, v: Vec2, context: string): Rect[] {
+	// Restrict its position within the screen.
+	return [this.scene.screen];
+    }
+}
+
+
+//  Game
+// 
+class Game extends GameScene {
+
+    player: Player;
+    tilemap: TileMap;
+    
+    score: number;
+    scoreBox: TextBox;
+
+    constructor() {
+	super();
+	this.scoreBox = new TextBox(this.screen.inflate(-2,-2), FONT);
+    }
+    
+    init() {
+	super.init();
+	
+	this.player = new Player(this, this.screen.center());
+	this.add(this.player);
+
+	this.score = 0;
+	this.updateScore();
+	//APP.setMusic(SOUNDS['music2'], 5.35, 26.55);
+    }
+
+    update() {
+	super.update();
+    }
+
+    onDirChanged(v: Vec2) {
+	this.player.setMove(v);
+    }
+
+    render(ctx: CanvasRenderingContext2D, bx: number, by: number) {
+	ctx.fillStyle = 'rgb(0,0,0)';
+	ctx.fillRect(bx, by, this.screen.width, this.screen.height);
+	super.render(ctx, bx, by);
+	this.scoreBox.render(ctx);
+    }
+
+    updateScore() {
+	this.scoreBox.clear();
+	this.scoreBox.putText([this.score.toString()]);
     }
 }

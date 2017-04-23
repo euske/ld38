@@ -4,7 +4,7 @@ PYTHON=python
 SOX=sox
 LAME=lame -t --cbr
 
-AUDIOS=zoom.mp3 ending.mp3
+AUDIOS=zoom.mp3 music2.mp3 ending.mp3
 
 all: $(AUDIOS)
 

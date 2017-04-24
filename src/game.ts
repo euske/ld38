@@ -158,7 +158,7 @@ class ZoomStarsImageSource implements ImageSource {
     private _stars: Star2[] = [];
 
     constructor(bounds: Rect, nstars: number, maxdepth=100) {
-	this.bounds = bounds
+	this.bounds = bounds.copy();
 	this.maxdepth = maxdepth;
 	this.imgsrc = new RectImageSource('white', new Rect(0,0,1,1));
 	for (let i = 0; i < nstars; i++) {
@@ -870,10 +870,11 @@ class Game extends GameScene {
 	this.updateAreaMap();
 
 	this.banner = new BannerBox(
-	    this.screen,
+	    this.screen.resize(200, 40),
 	    FONT, ['EARN $1000 BUCKS ASAP!']
 	);
 	this.banner.lifetime = 2.0;
+	this.banner.textbox.background = 'rgba(0,0,0,0.7)'
 	this.banner.stopped.subscribe(() => {
 	    APP.setMusic(SOUNDS['music2'], 5.35, 26.55);
 	    this.tasklist.suspended = false;

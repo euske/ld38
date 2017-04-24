@@ -461,9 +461,22 @@ class FixedSprite extends SimpleSprite {
 	this.pos = pos;
     }
 
+    /** Returns the bounds of the sprite at a given pos. */
+    getBounds(): Rect {
+	if (this.pos === null) {
+	    return null;
+	} else {
+	    return super.getBounds();
+	}
+    }
+    
     /** Returns its focal position. */
     getPos(): Vec2 {
-	return this.pos;
+	if (this.pos === null) {
+	    return new Vec2();
+	} else {
+	    return this.pos;
+	}
     }
 }
 

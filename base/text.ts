@@ -151,7 +151,7 @@ class TextBox implements ImageSource {
     segments: TextSegment[] = [];
     
     constructor(frame: Rect, font: Font=null) {
-	this.frame = frame;
+	this.frame = frame.copy();
 	this.font = font;
     }
 
@@ -345,16 +345,16 @@ class TextBox implements ImageSource {
 //
 class BannerBox extends Widget {
 
+    textbox: TextBox;
     sprite: FixedSprite;
     interval: number = 0;
     
     constructor(frame: Rect, font: Font, lines: string[], lineSpace=4) {
 	super();
-        let textbox = new TextBox(frame, font);
-        textbox.lineSpace = lineSpace;
-	textbox.putText(lines, 'center', 'center');
-	textbox.background = 'rgba(0,0,0,0.5)'
-        this.sprite = new FixedSprite(new Vec2(), textbox);
+        this.textbox = new TextBox(frame, font);
+        this.textbox.lineSpace = lineSpace;
+	this.textbox.putText(lines, 'center', 'center');
+        this.sprite = new FixedSprite(null, this.textbox);
     }
 
     init() {
@@ -485,7 +485,7 @@ class MenuItem {
     seg: TextSegment = null;
 
     constructor(pos: Vec2, text: string, value: any) {
-	this.pos = pos;
+	this.pos = pos.copy();
 	this.text = text;
 	this.value = value;
     }
@@ -658,7 +658,7 @@ class DialogBox extends Widget {
     
     constructor(textbox: TextBox, hiFont: Font=null) {
 	super();
-        this.sprite = new FixedSprite(new Vec2(), textbox);
+        this.sprite = new FixedSprite(null, textbox);
 	this.textbox = textbox;
 	this.hiFont = hiFont;
     }
